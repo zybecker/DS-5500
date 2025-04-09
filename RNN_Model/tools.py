@@ -50,7 +50,7 @@ def train_model(model, optimizer, dataloader, device=DEVICE, grad_clip=False, lo
         loss.backward()
 
         # Sort of experimental, but clip gradients if desired (1.0)
-        if grad_clip: clip_grad_norm_(model.parameters(), max_norm=grad_clip)
+        if grad_clip and ~np.isnan(grad_clip): clip_grad_norm_(model.parameters(), max_norm=grad_clip)
         
         # Step
         optimizer.step()
