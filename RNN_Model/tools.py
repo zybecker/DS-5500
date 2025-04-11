@@ -1,29 +1,40 @@
+"""
+Functions to support tuning, training, and evaluation of neural network models.
+Last updated: 4/11/2025
+"""
+
 import torch
 from torch.nn import MSELoss, L1Loss
 from torch.nn.utils import  clip_grad_norm_
-from sklearn.metrics import r2_score
+from sklearn.metrics import r2_score, mean_squared_log_error
 import numpy as np
 import matplotlib.pyplot as plt
 
+# Global setting for training device. User can still pass in perferred device during function calls
 DEVICE = torch.device("mps" if torch.backends.mps.is_available() else ("cuda" if torch.cuda.is_available() else "cpu"))
 
 
-def custom_loss(y, y_hat, epsilon=1e-8, alpha=1.0):
-    # Ensure y and y_hat are tensors of the same shape
-    assert y.shape == y_hat.shape, "y and y_hat must have the same shape"
-    
-    # Mean Squared Error term
-    mse_loss = torch.mean((y - y_hat) ** 2)
-    # Log-Squared Error term
-    log_loss = torch.mean((torch.log(y + epsilon) - torch.log(y_hat + epsilon)) ** 2)
-    # Final loss MSE + logMSE
-    loss = mse_loss + alpha * log_loss
-    return loss
-
-
 def train_model(model, optimizer, dataloader, device=DEVICE, grad_clip=False, loss_fn='MSE'):
-    model.train()   
-    epoch_loss = 0
+    """Script to train one epoch of a PyTorch model. 
+
+    Args:
+        model (nn.Module): PyTorch neural network model.
+        optimizer (torch.optim): PyTorch optimizer.
+        dataloader (DataLoader): PyTorch dataloader with inputs and targets.
+        device (torch.device): Device to run on (CPU, CUDA, MPS).
+        grad_clip (False or str): Value to clip gradients on (False if no clip).
+        loss_fn (str): string declaring loss function to use.
+
+    Returns:
+        Average loss value over training epoch.
+
+    Raises:
+        ValueError: Unsupported loss function string passed to function.
+    """
+    model.to(device)  # Send to right device
+    model.train()
+    epoch_loss = 0  # Track loss over epoch
+    # Go through all values in dataloader
     for inputs, targets in dataloader:
         # Send to the right device
         inputs, targets = inputs.to(device), targets.to(device)
@@ -31,7 +42,7 @@ def train_model(model, optimizer, dataloader, device=DEVICE, grad_clip=False, lo
         optimizer.zero_grad()
         # Forward pass
         outputs = model(inputs)
-        # Calculate and log loss
+        # Calculate and record loss
         if loss_fn == 'MSE':
             criterion = MSELoss()
             loss = criterion(outputs, targets)
@@ -41,49 +52,76 @@ def train_model(model, optimizer, dataloader, device=DEVICE, grad_clip=False, lo
         elif loss_fn == 'MAE':
             criterion = L1Loss()
             loss = criterion(outputs, targets)
-        elif loss_fn == 'custom':
-            criterion = custom_loss
-            loss = criterion(y_hat=outputs, y=targets, epsilon=1e-1, alpha=5)
+        elif loss_fn == 'MSLE':
+            loss = mean_squared_log_error(targets, outputs)
+        # If unsupported string passed in as loss function
         else: raise ValueError(f"Unsupported loss function: {loss_fn}")
 
         # Backwards pass and step
         loss.backward()
-
-        # Sort of experimental, but clip gradients if desired (1.0)
+        # Clip gradients if desired
         if grad_clip and ~np.isnan(grad_clip): clip_grad_norm_(model.parameters(), max_norm=grad_clip)
-        
         # Step
         optimizer.step()
         
         # Get loss
         epoch_loss += loss.item()*inputs.size(0)  # loss * batch size
-    return epoch_loss / len(dataloader.dataset)  # average loss 
+    return epoch_loss / len(dataloader.dataset)  # average loss over epoch
 
 
-def get_predictions(model, dataloader, device):
+def get_predictions(model, dataloader, device=DEVICE):
+    """Given a PyTorch model and dataloader, make predictions using model.
+
+    Args:
+        model (nn.Module): PyTorch neural network model.
+        dataloader (DataLoader): PyTorch dataloader with inputs and targets.
+        device (torch.device): Device to run on (CPU, CUDA, MPS).
+
+    Returns:
+        all_targets, all_outputs: lists of true targets and predicted values.
+    """
+    model.to(device)  # Send to right device
     model.eval()
-    all_targets, all_outputs = [], []
+    all_targets, all_outputs = [], []  # Lists to hold results
     with torch.no_grad():  # Disable gradients for evaluation
+        # Go through all values in dataloader
         for inputs, targets in dataloader:
-            inputs, targets = inputs.to(device), targets.to(device)  # Ensure test inputs are on the same device
+            # Send to the right device
+            inputs, targets = inputs.to(device), targets.to(device)  
             # Make prediction
             outputs = model(inputs)
-            
+            # Append true and predicted values to list
             all_targets.extend(targets.cpu().numpy())
             all_outputs.extend(outputs.cpu().numpy())
 
     return all_targets, all_outputs
 
 
-def evaluate_model(model, data_loader, device=DEVICE, loss_fn='RMSE'):
+def evaluate_model(model, dataloader, device=DEVICE, loss_fn='RMSE'):
+    """Evaluate model predictions and true values using loss function.
 
+    Args:
+        model (nn.Module): PyTorch neural network model.
+        dataloader (DataLoader): PyTorch dataloader with inputs and targets.
+        device (torch.device): Device to run on (CPU, CUDA, MPS).
+        loss_fn (str): string declaring loss function to use.
+
+    Returns:
+        average_loss (float): Average loss over all values in dataloader.
+
+    Raises:
+        ValueError: Unsupported loss function string passed to function.
+    """
+    model.to(device)  # Send to right device
     model.eval()
+    # Tracking loss values and number of samples
     total_loss = 0.0
     total_samples = 0 
 
     with torch.no_grad():
-        for inputs, targets in data_loader:
-            # Move the data to the correct device
+        # Go through all values
+        for inputs, targets in dataloader:
+            # Send to the right device
             inputs, targets = inputs.to(device), targets.to(device)
             # Get model predictions
             predictions = model(inputs)
@@ -98,87 +136,149 @@ def evaluate_model(model, data_loader, device=DEVICE, loss_fn='RMSE'):
             elif loss_fn == 'MAE':
                 criterion = L1Loss()
                 loss = criterion(predictions, targets)
-            elif loss_fn == 'custom':
-                criterion = custom_loss
-                loss = criterion(y_hat=predictions, y=targets, epsilon=1e-1, alpha=5)
+            elif loss_fn == 'MSLE':
+                loss = mean_squared_log_error(targets, predictions)
+            # If unsupported string passed in as loss function
             else: raise ValueError(f"Unsupported loss function: {loss_fn}")
 
             # Accumulate the loss for this batch
             total_loss += loss.item() * inputs.size(0)  # Multiply by batch size to get total loss
-            total_samples += inputs.size(0)
+            total_samples += inputs.size(0)  # Track number of samples processed
 
-    # Calculate the average loss
+    # Calculate the average loss over all values
     average_loss = total_loss / total_samples
     return average_loss
 
 
 def calculate_R2_score(targets, predictions):
+    """Calculate coefficient of determination (R2).
+
+    Args:
+        targets (list): true values.
+        predictions (list): model-predicted values.
+
+    Returns:
+        R2_score_value (float): calculated R2 score.
+    """
+    # Convert input lists to numpy arrays
     targets = np.array(targets)
     predictions = np.array(predictions)
-    R2_score_value = r2_score(targets, predictions)
-    return R2_score_value
-
+    # Calculate and return score using sklearn's 
+    return r2_score(targets, predictions)
 
 
 def best_hyperparameter_results(results, loss='MSE', n_best=6):
-    # Get rankings of each model by RSME
+    """Process all hyperparameter tuning results and choose best
+
+    Given a list dicts of results, will choose the n best results and
+    print the best results and plot the training loss.
+
+    Each list in the results dictionary will have (in order of index):
+        List of loss value at each training epoch.
+        Test accuracy value.
+        Batch size.
+        Number of training epochs (varies due to early stopping).
+
+
+    Args:
+        results (dict): Dictionary of lists of model training results.
+            Key corresponds to model number training (sequentially).
+        loss (str): String of loss function used to include in plot title.
+        n_best (6): How many best models to print and plot.
+
+    Returns:
+        None. Prints results and visualizes all results in matplotlib plot.
+    """
+    # Get rankings of each model by loss
     mlp_rsmes = np.array([results[i][1] for i in results])
     order = mlp_rsmes.argsort()
     # Then, pull out the top n models and print their information
     n_best = 6
     best_models = [(ind.item(), results[ind][1]) for ind in order[0:n_best]]
-    # Print out index of model in results dictionary and it's parameters
+    # Print out index of model in results dictionary and its parameters
     print(f'{n_best} best models (index and values):')
     for m in best_models:
         print(m)
 
-    ### Plot n best results
+    # Plot n best results
     n_columns = 3
-    n_rows = int(np.ceil(n_best / n_columns))
+    n_rows = int(np.ceil(n_best / n_columns))  # dynamically adjust row number
+
     fig, axes = plt.subplots(n_rows, n_columns, figsize=(n_columns * 4, n_rows * 3))
     axes = axes.flatten()
 
     for i, model in enumerate(order[0:n_best]):
-        # model is the specific model, which is represented by an index in the results dict
+        # Model is the specific model, which is represented by an index in the results dict
         axes[i].set_title(f'Rank {i}: Model {order[i]}\n{results[model][2]}', size=8)
-        axes[i].plot(results[model][0], c='b', label='Validation')
-        axes[i].scatter(x=len(results[model][0])-1, y=results[model][1], c='r', s=20, label='Test Avg.')
+        # Plot loss over training epochs and at end of training
+        axes[i].plot(results[model][0], c='b', label='Validation Loss')
+        axes[i].scatter(x=len(results[model][0])-1, y=results[model][1], c='r', s=20, label='Final Loss')
         if i == 0: axes[i].legend(loc='upper right', fontsize='small', shadow=True)  # only show legend for first plot
     fig.text(0.001, 0.5, f'Loss ({loss})', ha='center', va='center', rotation='vertical', fontsize=13)
     fig.text(0.5, 0.001, 'Epochs', ha='center', va='center', fontsize=13)
     plt.suptitle(f"Best {n_best} Performing Models, Ranked by {loss}", fontsize=13)
     plt.tight_layout()
+    plt.show()
 
     return None
 
-def visualize_all_hyperparameter_results(results, loss, num_epochs):
+def visualize_all_hyperparameter_results(results, loss='MSE'):
+    """If desired, visualize the results of all hyperparameter tunings.
+
+    Will plot all results, which have hyperparameter and loss values
+    in plot title. Might be overwhelming large, so use with caution.
+
+    Each list in the results dictionary will have (in order of index):
+        [0]: List of loss value at each training epoch.
+        [1]: Test accuracy value.
+        [2]: Batch size.
+        [3]: Number of training epochs (varies due to early stopping).
+
+    Args:
+        results (dict): Dictionary of lists of model training results.
+            Key corresponds to model number training (sequentially).
+        loss (str): String of loss function used to include in plot title.
+
+    Returns:
+        None. Visualizes all results in matplotlib plot.
+    """
     n_figures = len(results)
     n_columns = 3
     n_rows = int(np.ceil(n_figures / n_columns))
     fig, axes = plt.subplots(n_rows, n_columns, figsize=(n_columns * 4, n_rows * 3))
     axes = axes.flatten()
 
-    for i in range(n_figures):
+    for i in range(n_figures):  # In this case, i is also model #
         axes[i].set_title(f'Model {i}\n{results[i][2]}', size=8)
+        # Plot loss over training epochs and at end of training
         axes[i].plot(results[i][0], c='b')
-        axes[i].scatter(x=num_epochs-1, y=results[i][1], c='b', s=20)
+        axes[i].scatter(x=len(results[i][0])-1, y=results[i][1], c='b', s=20)
     for j in range(n_figures, len(axes)):
         axes[j].axis('off')
     plt.suptitle("All Evaluated Models")
-    fig.text(0.001, 0.5, 'Loss ({loss})', ha='center', va='center', rotation='vertical', fontsize=13)
+    fig.text(0.001, 0.5, f'Loss ({loss})', ha='center', va='center', rotation='vertical', fontsize=13)
     fig.text(0.5, 0.001, 'Epochs', ha='center', va='center', fontsize=13)
     plt.tight_layout()
+    plt.show()
+
+    return None
 
 
 class EarlyStopping:
-    def __init__(self, patience=10, min_delta=0):
-        """
-        Args:
-            patience (int): Number of epochs to wait after last time validation loss improved.
-                            Defaults to 10.
-            min_delta (float): Minimum change in the monitored quantity to qualify as an improvement.
-                            Defaults to 0.
-        """
+    """Class to implement early stopping during model training.
+
+    Class will track loss over training epoch. Upon enough epochs (patience)
+    of no improvement (min_delta) in loss function, will communicate 
+    to training script to terminate training.
+
+    Attributes:
+        patience: How many epochs training can not improve before terminating training.
+        min_delta: Difference between best and current to flag counter.
+        counter (int): How many epochs training has not improved.
+        best_loss (float): Current best/lowest value for loss function.
+        early_stop (boolean): Whether to stop early (True) or keep training (False).
+    """
+    def __init__(self, patience=10, min_delta=0.001):
         self.patience = patience
         self.min_delta = min_delta
         self.counter = 0
@@ -186,16 +286,23 @@ class EarlyStopping:
         self.early_stop = False
 
     def __call__(self, val_loss):
+        """Implementation of early stopping during model training.
+
+        Args:
+          val_loss (float): Numeric value of epoch loss.
+        
+        Returns: None.
+        """
         # First run
         if self.best_loss is None:
             self.best_loss = val_loss
-        # Improving
+        # Improving - reset counter
         elif self.best_loss - val_loss > self.min_delta:
             self.best_loss = val_loss
             self.counter = 0
         # Not improving, but still not at criteria to stop
         elif self.counter < self.patience:
             self.counter += 1
-        # Threshold met. Stop
+        # Threshold met. Stop training
         else:
             self.early_stop = True
