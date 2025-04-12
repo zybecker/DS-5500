@@ -14,6 +14,10 @@ import matplotlib.pyplot as plt
 DEVICE = torch.device("mps" if torch.backends.mps.is_available() else ("cuda" if torch.cuda.is_available() else "cpu"))
 
 
+def msle_loss(predictions, targets):
+    return torch.mean((torch.log1p(predictions) - torch.log1p(targets)) ** 2)
+
+
 def train_model(model, optimizer, dataloader, device=DEVICE, grad_clip=False, loss_fn='MSE'):
     """Script to train one epoch of a PyTorch model. 
 
@@ -53,7 +57,7 @@ def train_model(model, optimizer, dataloader, device=DEVICE, grad_clip=False, lo
             criterion = L1Loss()
             loss = criterion(outputs, targets)
         elif loss_fn == 'MSLE':
-            loss = mean_squared_log_error(targets, outputs)
+            loss = msle_loss(outputs, targets)
         # If unsupported string passed in as loss function
         else: raise ValueError(f"Unsupported loss function: {loss_fn}")
 
@@ -137,7 +141,7 @@ def evaluate_model(model, dataloader, device=DEVICE, loss_fn='RMSE'):
                 criterion = L1Loss()
                 loss = criterion(predictions, targets)
             elif loss_fn == 'MSLE':
-                loss = mean_squared_log_error(targets, predictions)
+                loss = msle_loss(predictions, targets)
             # If unsupported string passed in as loss function
             else: raise ValueError(f"Unsupported loss function: {loss_fn}")
 
