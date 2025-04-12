@@ -56,7 +56,7 @@ class SimpleNet(nn.Module):
         x = self.relu(self.bn2(self.middle_layer(x)))
         x = self.dropout(x)
         # Final output layer
-        x = self.output_layer(x)
+        x = self.relu(self.output_layer(x))
         return x.squeeze()  # Remove extra dimension for regression tasks
 
 
