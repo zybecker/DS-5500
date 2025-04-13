@@ -37,8 +37,8 @@ class SimpleNet(nn.Module):
         super().__init__()
         
         # Linear layers
-        self.input_layer = nn.Linear(input_size*seq_len, hidden_features)
-        self.middle_layer = nn.Linear(hidden_features, hidden_features)
+        self.input_layer = nn.Linear(input_size*seq_len, hidden_features, bias=False)
+        self.middle_layer = nn.Linear(hidden_features, hidden_features, bias=False)
         self.output_layer = nn.Linear(hidden_features, 1)
         # Functional layers
         self.dropout = nn.Dropout(dropout)
