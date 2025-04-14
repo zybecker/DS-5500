@@ -1,6 +1,6 @@
 """
 Neural network (Linear, RNN) module classes.
-Last updated: 4/11/2025
+Last updated: 4/14/2025
 """
 import torch
 import torch.nn as nn
@@ -72,9 +72,10 @@ class BaseballRNN(torch.nn.Module):
         fc_in: Input PyTorch linear layer.
         rnn1: PyTorch GRU layers
         fc_out: Output PyTorch linear layer.
-        layernorm: Layer normalization PyTorch layer.
+        ln1: Layer normalization PyTorch layer for fully connected layer.
+        ln1: Layer normalization for GRU output.
         dropout: Dropout PyTorch layer.
-        relu: LeakyReLU PyTorch activation, with negative slope = 0.02..
+        relu: LeakyReLU PyTorch activation, with negative slope = 0.02.
     """
     def __init__(self, input_size, hidden_size=256, n_layers=1, bidirectional=False, hidden_init='rand', rnn_dropout=0.2):
         """Initializes the instance based on spam preference.
@@ -98,14 +99,14 @@ class BaseballRNN(torch.nn.Module):
         self.fc_in = nn.Linear(input_size, self.hidden_size)
         # GRU Layer
         self.rnn1 = nn.GRU(self.hidden_size, self.hidden_size, batch_first=True, num_layers=self.n_layers, dropout=self.rnn_dropout, bidirectional=False)
-        # Dropout layer after last GRU layer
-        self.layernorm = nn.LayerNorm(self.hidden_size)
         # Output layer
         self.fc_out = nn.Linear(self.hidden_size, 1) 
         
-        # RELU and non-RNN dropout
+        # RELU, non-RNN dropout, layernorm
         self.relu = nn.LeakyReLU(negative_slope=0.02)
         self.dropout = nn.Dropout(self.rnn_dropout)
+        self.ln1 = nn.LayerNorm(self.hidden_size)
+        self.ln2 = nn.LayerNorm(self.hidden_size)
 
     def _init_hidden(self, batch_size, device):
         """Initialize the GRU cell hidden state at start of training.
@@ -148,14 +149,14 @@ class BaseballRNN(torch.nn.Module):
         h0 = self._init_hidden(x.size(0), x.device)
         
         # Pre RNN Linear Layer
-        x = self.relu(self.fc_in(x))
+        x = self.relu(self.ln1(self.fc_in(x)))
         x = self.dropout(x)
 
         # Send through RNN 
         out, hidden = self.rnn1(x, h0)
         # Get output of the last time step
         out = out[:, -1, :]  # (batch_size, seq_len, hidden_size)
-        out = self.layernorm(out)
+        out = self.ln2(out)
 
         # Output layer
         out = self.relu(self.fc_out(out))
