@@ -6,9 +6,12 @@ Last updated: 4/11/2025
 import torch
 from torch.nn import MSELoss, L1Loss
 from torch.nn.utils import  clip_grad_norm_
-from sklearn.metrics import r2_score, mean_squared_log_error
+from torch.utils.data import random_split
+from torch.utils.data import TensorDataset
+from sklearn.metrics import r2_score
 import numpy as np
 import matplotlib.pyplot as plt
+from sklearn.preprocessing import StandardScaler
 
 # Global setting for training device. User can still pass in perferred device during function calls
 DEVICE = torch.device("mps" if torch.backends.mps.is_available() else ("cuda" if torch.cuda.is_available() else "cpu"))
@@ -310,3 +313,45 @@ class EarlyStopping:
         # Threshold met. Stop training
         else:
             self.early_stop = True
+
+
+def get_dataloaders(dataset):
+
+    # Split into test and train data
+    train_dataset, test_dataset = random_split(dataset, [0.9, 0.1])
+    train_dataset, valid_dataset = random_split(train_dataset, [0.89, 0.11])
+
+    print(f"Train: {len(train_dataset)/len(dataset)*100:.1f}%, Test: {len(test_dataset)/len(dataset)*100:.1f}%, Valid: {len(valid_dataset)/len(dataset)*100:.1f}%")
+
+
+    # Save as one big list
+    datasets = [train_dataset, valid_dataset, test_dataset]
+
+    # Convert datasets into tensors for easier manipulation
+    inputs = [torch.stack([x[0] for x in set]) for set in datasets]
+
+    # Store original shapes of each dataset
+    original_shapes = [input.shape for input in inputs]
+
+    # Reshape the inputs to 2D for scaling
+    inputs_reshaped = [input.view(input.size(0), -1) for input in inputs]
+
+    # Create scaler
+    scaler = StandardScaler()
+
+    # Fit scaler on training data and transform (use train scaler for all)
+    inputs_scaled = [torch.tensor(scaler.fit_transform(input.numpy()), dtype=torch.float32) for input in inputs_reshaped]
+
+    # Reshape the scaled inputs back to the original shape
+    inputs_scaled_reshaped = [input.view(original_shapes[i]) for i, input in enumerate(inputs_scaled)]
+
+    # Recreate the datasets with the scaled inputs
+    train_dataset, valid_dataset, test_dataset = [TensorDataset(input, torch.stack([x[1] for x in datasets[i]])) for i, input in enumerate(inputs_scaled_reshaped)]
+
+    # Print output shapes
+    print(f"Train inputs shape: {inputs_scaled_reshaped[0].shape}. Mean, Std: [{inputs_scaled_reshaped[0].mean():.1f},{inputs_scaled_reshaped[0].std():.1f}]")
+    print(f"Valid inputs shape: {inputs_scaled_reshaped[1].shape}. Mean, Std: [{inputs_scaled_reshaped[1].mean():.1f},{inputs_scaled_reshaped[1].std():.1f}]")
+    print(f"Test inputs shape: {inputs_scaled_reshaped[2].shape}. Mean, Std: [{inputs_scaled_reshaped[2].mean():.1f},{inputs_scaled_reshaped[2].std():.1f}]")
+
+    return train_dataset, valid_dataset, test_dataset
+
