@@ -1,0 +1,7 @@
+.DS_Store
+*/.DS_Store
+
+*/.*.cpython-310.pyc
+
+# Ignore the large CSV data file
+2024pitches.csv
