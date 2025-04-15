@@ -2,6 +2,7 @@
 */.DS_Store
 
 __pycache__/
+*/__pycache__/
 
 # Ignore the large CSV data file
 2024pitches.csv
