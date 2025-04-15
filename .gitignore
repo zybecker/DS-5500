@@ -1,8 +1,10 @@
 .DS_Store
 */.DS_Store
 
+# Ignore all Python bytecode files
 __pycache__/
-*/__pycache__/
+*.py[cod]
+*$py.class
 
 # Ignore the large CSV data file
 2024pitches.csv
