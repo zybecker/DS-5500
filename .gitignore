@@ -8,3 +8,4 @@ __pycache__/
 
 # Ignore the large CSV data file
 2024pitches.csv
+*.pyc
