@@ -1,6 +1,6 @@
 """
 Functions to support tuning, training, and evaluation of neural network models.
-Last updated: 4/11/2025
+Last updated: 4/15/2025
 """
 
 import torch
@@ -318,6 +318,21 @@ class EarlyStopping:
 
 
 def get_dataloaders(dataset):
+    """Splits and scales input dataset.
+
+    Creates training, testing, and validation datasets with a 80/10/10 split.
+    Then zero-mean scales these datasets, making sure to use the training
+        dataset scaler as all the scaler for all. 
+    Prints output shape and split for validation.
+    Uses scikit-learn's StandardScaler.
+
+    Args:
+        dataset (nn.Dataset): PyTorch dataset with all data.
+
+    Returns:
+        train_dataset, valid_dataset, test_dataset: the three final datasets.
+    """
+
 
     # Split into test and train data
     train_dataset, test_dataset = random_split(dataset, [0.9, 0.1])
@@ -358,7 +373,7 @@ def get_dataloaders(dataset):
     return train_dataset, valid_dataset, test_dataset
 
 
-def save_model_with_params(model, filepath):
+def save_model_state_dict(model, filepath):
     """Saves state dictionary of PyTorch models with automatic parameter capturing.
 
     To load models, make sure that you use the custom classes that were used
@@ -396,3 +411,5 @@ def save_model_with_params(model, filepath):
     }, filepath)
 
     print(f"Model saved to {filepath}")
+
+    return None
