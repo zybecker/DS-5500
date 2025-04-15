@@ -1,8 +1,7 @@
 .DS_Store
 */.DS_Store
 
-*/*.cpython-310.pyc
-*/*.cpython-313.pyc
+__pycache__/
 
 # Ignore the large CSV data file
 2024pitches.csv
