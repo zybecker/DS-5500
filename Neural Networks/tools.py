@@ -12,6 +12,8 @@ from sklearn.metrics import r2_score
 import numpy as np
 import matplotlib.pyplot as plt
 from sklearn.preprocessing import StandardScaler
+import inspect
+
 
 # Global setting for training device. User can still pass in perferred device during function calls
 DEVICE = torch.device("mps" if torch.backends.mps.is_available() else ("cuda" if torch.cuda.is_available() else "cpu"))
@@ -355,3 +357,42 @@ def get_dataloaders(dataset):
 
     return train_dataset, valid_dataset, test_dataset
 
+
+def save_model_with_params(model, filepath):
+    """Saves state dictionary of PyTorch models with automatic parameter capturing.
+
+    To load models, make sure that you use the custom classes that were used
+    to create the base model.
+
+    Args:
+        model (nn.Module): PyTorch model object.
+        filepath (str): Filepath to save .pth object to.
+            File extension should be .pth.
+
+    Returns:
+        None. Saves object to file.
+    """
+
+    # Get all model initialization parameters
+    model_init_params = {}
+    for param_name, param in inspect.signature(model.__class__.__init__).parameters.items():
+        if param_name != 'self' and hasattr(model, param_name):
+            model_init_params[param_name] = getattr(model, param_name)
+    
+    # Get custom class parameters, if they exist
+    custom_class_params = {}
+    if hasattr(model, 'custom_layer'):
+        for param_name, param in inspect.signature(model.custom_layer.__class__.__init__).parameters.items():
+            if param_name != 'self' and hasattr(model.custom_layer, param_name):
+                custom_class_params[param_name] = getattr(model.custom_layer, param_name)
+    
+    # Save everything and print status
+    torch.save({
+        'model_state_dict': model.state_dict(),
+        'model_class': model.__class__.__name__,
+        'model_init_params': model_init_params,
+        'custom_class_name': model.custom_layer.__class__.__name__ if hasattr(model, 'custom_layer') else None,
+        'custom_class_params': custom_class_params
+    }, filepath)
+
+    print(f"Model saved to {filepath}")
